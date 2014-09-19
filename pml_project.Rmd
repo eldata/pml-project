@@ -1,0 +1,137 @@
+---
+title: "Practical Machine Learning - Project"
+author: "ElData"
+date: "Thursday, September 18, 2014"
+output: html_document
+---
+```{r setup, cache = FALSE}
+library(knitr)
+knitr::opts_chunk$set(error = TRUE)
+```
+## Executive Summary:
+A classification model was fitted from a set of train/test data from over 19000 samples with up to 160 variables.  More information on the study and data source is available here:  http://groupware.les.inf.puc-rio.br/har  (see the section on the Weight Lifting Exercise Dataset).
+
+The final reslults were achieved by training/testing a predictive model utilizing the **Random Forest** method and a **four fold cross validation**.  The **"In Sample" accuracy** measured was 100% and the **"Out of Sample" accuracy** measured was 99.58% .  And ultimately, the prediction model running the testing data provided by the instructor yielded a **prediction of 20/20 correct or 100%**.
+
+
+## The main goals of this project are:
+- 1.  Use the acceloerometer data as sampled from the 6 participants as depicted by the "classe" variable;
+- 2.  Build a prediction model using the different features and cross-validation technique;
+- 3.  Calculate the out of sample error;
+- 4.  Use the prediction model to predict 20 different test cases, as provided.
+
+
+## Retrieve the data:
+```{r}
+traincsv<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testcsv<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(traincsv, destfile = "pml-training.csv", method = "auto")
+download.file(testcsv, destfile = "pml-testing.csv", method = "auto")
+```
+## Load the data:
+```{r}
+training <- read.table("./pml-training.csv",sep=",",na.strings = c("NA",""),header=TRUE)
+testing <- read.table("./pml-testing.csv",sep=",",na.strings = c("NA",""),header=TRUE)
+```
+## Process and clean data:
+
+Check for (1)total number of NAs in the dataset, then; (2)total NAs in each "training" and "testing" datasets.
+```{r}
+sum(is.na(training))
+na_train <- sapply(training, function(x) {sum(is.na(x))})
+table(na_train)
+na_test <- sapply(testing, function(x) {sum(is.na(x))})
+table(na_test)
+```
+Clean the data as follows:
+```{r}
+# For Training dataset:
+columnNACounts <- colSums(is.na(training))         # get NA counts for all columns    
+badColumns <- columnNACounts >= 19000              # ignore columns with mostly NA values
+cleanTrainingdata <- training[!badColumns]         # get clean data
+sum(is.na(cleanTrainingdata))                      # check for NA values
+cleanTrainingdata <- cleanTrainingdata[, c(7:60)]  # remove unnecessary columns
+
+# For Testing dataset:
+columnNACounts <- colSums(is.na(testing))       # get NA counts for all columns
+badColumns <- columnNACounts >= 20              # ignore coluns with mostly NA values
+cleanTestingdata <- testing[!badColumns]        # get clean data
+sum(is.na(cleanTestingdata))                    # check for NA values
+cleanTestingdata <- cleanTestingdata[, c(7:60)] # remove unnecessary soumns
+```
+Dataset is now clean of NA values and some unnecessary variables were removed.
+
+
+## Exploratory Data Analysis:
+
+We take a look at summary statistics and frequency plot for the "classe" variable.
+```{r}
+summary(cleanTrainingdata$classe)
+library(ggplot2)
+qplot(cleanTrainingdata$classe, geom="histogram", fill=cleanTrainingdata$classe, main="'classe' frequency plot", xlab="Activity Type")
+```
+
+
+
+
+## Build Model:
+Build machine learning model for prediction of the "classe" value based on the other features of the dataset.
+Data partitioning -
+We partition the cleanTrainingdata dataset into training and testing datasets, respectively to build our model.
+```{r}
+library(caret)
+set.seed(368)
+inTrain <- createDataPartition(y=cleanTrainingdata$classe, p=0.6, list=FALSE)
+trainingdata <- cleanTrainingdata[inTrain, ]
+testingdata <- cleanTrainingdata[-inTrain, ]
+dim(trainingdata)
+```
+**Model Building:**
+We now use our trainingdata dataset to build our model using the **Random Forest** machine learning technique and using 4 fold cross validation.
+```{r}
+library(foreach)
+library(doParallel)  # run model in parallel using all 4 cores of intel i7 3517 CPU on/windows7 (~13 mins).
+registerDoParallel(cores=4)
+model <- train(trainingdata$classe ~., data=trainingdata, method="rf", prox=TRUE,
+               trControl=trainControl(method="cv", number=4, allowParallel=TRUE))
+print(model)
+```
+## In Sample accuracy:
+We calculate the "in sample" accuracy which is the prediction accuracy of our model on the training dataset.
+```{r}
+training_pred <- predict(model, trainingdata)
+confusionMatrix(training_pred, trainingdata$classe)
+```
+We see from above output that our "in sample" accuracy value is 1 or 100%.
+
+
+## Out of Sample accuracy:
+We calculate the "out of sample" accuracy which is the prediction accuracy of our model on the testing dataset.
+```{r}
+testing_pred <- predict(model, testingdata)
+confusionMatrix(testing_pred, testingdata$classe)
+```
+We see from above output that our "out of sample" accuracy value is 0.9958 or 99.58%.
+
+
+## Prediction Assignment:
+We apply the our machine learning algorithm to each of the 20 test cases in the testing dataset provided to us.
+```{r}
+answers <- predict(model, cleanTestingdata)
+answers <- as.character(answers)
+answers
+```
+As requested, we now write the answers to .txt file(s) using the following code as provided:
+```{r}
+pml_write_files = function(x) {
+        n = length(x)
+        for(i in 1:n) {
+                filename = paste0("problem_id", i, ".txt")
+                write.table(x[i], file = filename, quote = FALSE, row.names = FALSE,
+                            col.names = FALSE)
+        }
+}
+pml_write_files(answers)
+```
+And ultimately, the prediction model running the testing data provided by the instructor yielded a **prediction of 20 out of 20 correct or 100%**.
+
